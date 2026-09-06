@@ -2,6 +2,14 @@
 import os
 import sys
 import time
+# Fail fast if run outside the 3.11 project venv (e.g. bare `python3`)
+if sys.version_info < (3, 11):
+    raise SystemExit(
+        f"news_scraper.py requires Python >= 3.11 (running {sys.version.split()[0]}).\n"
+        f"Run it via the project venv:\n"
+        f"  /home/ec2-user/home/ETL-project/venv/bin/python etl/news_scraper.py"
+    )
+
 from dotenv import load_dotenv
 import boto3
 import json
@@ -280,6 +288,7 @@ resp_detail = s3.put_object(
     Key="news_data/public_news_detail_table.json",
     Body=json.dumps(detail_payload, indent=2),
     ContentType="application/json",
+    CacheControl="public, max-age=86400, stale-while-revalidate=604800",
 )
 print(
     "DETAIL PUT:",
@@ -306,6 +315,7 @@ resp_bar = s3.put_object(
     Key="news_data/public_news_data_bar_chart.json",
     Body=json.dumps(json_payload, indent=2),
     ContentType="application/json",
+    CacheControl="public, max-age=86400, stale-while-revalidate=604800",
 )
 print(
     "BAR PUT:",
