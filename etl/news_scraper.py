@@ -60,7 +60,7 @@ sys.stdout.flush()
 # Import ban_config properly
 sys.path.append(os.path.join(BASE_DIR))
 from config.ban_config import state_patterns, keywords
-from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain
+from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain, state_to_abbrev
 # imports for Gmail cutoff
 from datetime import datetime, timedelta, timezone
 # connect to email server and initial pull of messages and emails
@@ -255,7 +255,7 @@ except Exception as e:
 df_filtered = df[df["state"] != "National / Unknown"]
 # 2 drop headlines that are parsed wrong and begin with an https tag
 df_filtered = df_filtered[~df_filtered["headlines"].str.startswith("<https", na=False)]
-df_filtered["state_abbrev"] = df_filtered["state"].apply(lambda x: us.states.lookup(x).abbr if us.states.lookup(x) else None)
+df_filtered["state_abbrev"] = df_filtered["state"].apply(state_to_abbrev)
 df_filtered['alert_date'] = df_filtered['alert_date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 # --- APPEND TO EXISTING DATA ---

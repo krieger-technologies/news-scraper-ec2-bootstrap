@@ -4,7 +4,7 @@ state_patterns = {
     "Alabama": r"\bAlabama\b", # |\bAL\b seems to get confused with AI?
     "Alaska": r"\bAlaska\b|\bAK\b",
     "Arizona": r"\bArizona\b|\bAZ\b",
-    "Arkansas": r"\bArkansas\b|\bAR\b",
+    "Arkansas": r"\bArkansas\b|\bAR\b(?![-\s]?\d)",
     "California": r"\bCalifornia\b|\bCA\b|\bLA\b|\bNewsom\b",
     "Colorado": r"\bColorado\b|\bCO\b|\bDenver\b",
     "Connecticut": r"\bConnecticut\b|\bCT\b",
@@ -24,7 +24,7 @@ state_patterns = {
     "Massachusetts": r"\bMassachusetts\b|\bMA\b",
     "Michigan": r"\bMichigan\b|\bMI\b|\bDetroit\b",
     "Minnesota": r"\bMinnesota\b|\bMN\b",
-    "Mississippi": r"\bMississippi\b|\bMS\b",
+    "Mississippi": r"\bMississippi\b|\bMS\b(?![-\s]?(?:NOW|NBC|\d))",
     "Missouri": r"\bMissouri\b|\bMO\b",
     "Montana": r"\bMontana\b|\bMT\b",
     "Nebraska": r"\bNebraska\b|\bNE\b",
@@ -46,12 +46,12 @@ state_patterns = {
     "Texas": r"\bTexas\b|\bTX\b|\bEl Paso\b|\bDallas\b",
     "Utah": r"\bUtah\b|\bUT\b",
     "Vermont": r"\bVermont\b|\bVT\b",
-    "Virginia": r"\bVirginia\b|\bVA\b",
-    "Washington": r"\bWashington\b|\bWA\b",
     "West Virginia": r"\bWest Virginia\b|\bWV\b",
+    "Virginia": r"\bVirginia\b|\bVA\b",
+    "District of Columbia": r"\bWashington,?\s+D\.?C\b|\bD\.C\.|\bDC\b",
+    "Washington": r"\bWashington\b|\bWA\b",
     "Wisconsin": r"\bWisconsin\b|\bWI\b",
     "Wyoming": r"\bWyoming\b|\bWY\b",
-    "District of Columbia": r"\bWashington DC\b|\bD\.C\.\b|\bDC\b",
     "National": r"\bTrump\b|\bwhite house\b|\bcongress\b|\bTSA\b"
 }
 

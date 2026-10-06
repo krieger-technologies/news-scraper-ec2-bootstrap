@@ -5,6 +5,7 @@ from .ban_config import state_patterns, keywords
 from nltk.corpus import stopwords
 import os
 import nltk
+import us
 from nltk.corpus import stopwords
 
 # Force a fixed, non-root NLTK data directory
@@ -37,11 +38,27 @@ def safe_get_plain(message):
         return None
 
 # extract states / locations
-def extract_state(text: str) -> str:
+# Google Alerts appends the outlet: "Headline - Source" / "Headline | Source - YouTube"
+SOURCE_SUFFIX = re.compile(r"\s+[-–—|]\s*([^|\-–—]*)$")
+YOUTUBE_SUFFIX = re.compile(r"\s+[-–—]\s+YouTube\s*$")
+
+def split_source(text: str):
+    """Split a headline into (body, source). Source is '' if none found."""
+    text = YOUTUBE_SUFFIX.sub("", text)
+    m = SOURCE_SUFFIX.search(text)
+    return (text[:m.start()], m.group(1)) if m else (text, "")
+
+def first_state_match(text: str) -> Optional[str]:
     for state, pattern in state_patterns.items():
         if re.search(pattern, text, re.IGNORECASE):
             return state
-    return "National / Unknown"
+    return None
+
+# extract states / locations: headline body wins; outlet name is only a fallback
+def extract_state(text: str) -> str:
+    body, source = split_source(text)
+    return first_state_match(body) or first_state_match(source) or "National / Unknown"
+
 # extract data source names
 def extract_datasource(url: str) -> str:
     domain = urlparse(url).netloc
@@ -86,3 +103,12 @@ def choose_target(headline: str) -> Optional[str]:
         return ", ".join(kws)
     # 2) Fallback to regex phrase after "ban..."
     return extract_target_generic(headline)
+
+# us 3.2.0 has no entry for DC, so it needs an explicit abbreviation
+STATE_ABBREV_OVERRIDES = {"District of Columbia": "DC"}
+
+def state_to_abbrev(state: str) -> Optional[str]:
+    if state in STATE_ABBREV_OVERRIDES:
+        return STATE_ABBREV_OVERRIDES[state]
+    match = us.states.lookup(state)
+    return match.abbr if match else None
