@@ -56,6 +56,7 @@ state_patterns = {
 }
 
 # --- keyword → synonyms/patterns (ordered by priority) ---
+# matched against the headline body only (outlet name stripped); first 3 matches are kept
 keywords = {
     # abbreviations
     "AI":         [r"\bAI\b", r"\bartificial intelligence\b", r"\bopenai\b", r"\bopen ai\b"],
@@ -66,36 +67,44 @@ keywords = {
     "vapes":      [r"\bvapes?\b", r"\bvaping\b", r"\be-?cig(?:arette)?s?\b", r"\bflavored vapes?\b"],
     "tobacco":    [r"\btobacco\b", r"\bnicotine\b"],
     "alcohol":    [r"\balcohol\b", r"\bliquor\b", r"\bbeer\b", r"\bwine\b", r"\bwhiskey\b", r"\bbourbon\b", r"\bbooze\b"],
-    "drugs":      [r"\bxanax\b|\bdrug\b"],
+    "drugs":      [r"\bxanax\b|\bdrug\b", r"\bnitrous oxide\b", r"\bwhippets?\b"],
     # health-care
     "gender-affirming care": [r"\bgender[-\s]?affirming care\b", r"\bpuberty blockers?\b", r"\bhormone therapy\b", r"\btrans\b", r"\btransgender\b", r"\bbathroom ban\b", r"\bpronouns\b"],
     "abortion":   [r"\babortion\b", r"\bmifepristone\b", r"\bplan\s?b\b"],
     "health-care":[r"\btherapy\b", r"\bhealth-care\b", r"\bhealth care\b", r"\bmental health\b"],
     "vaccines":   [r"\bvaccine\b", r"\bvaccines\b"],
     "masks":      [r"\bmask\b", r"\bmasks\b", r"\bmasked\b"],
+    "food additives": [r"\bfood dyes?\b", r"\bdyes?\b", r"\badditives?\b", r"\bultra[-\s]?processed\b", r"\bjunk food\b", r"\bsugary (?:drinks?|foods?)\b", r"\bsoda\b", r"\bcandy\b"],
     # technology
     "tiktok":     [r"\bTikTok\b"],
     "drones":     [r"\bdrone\b|\bdrones\b"],
     "cell phones":[r"\bcell phones?\b", r"\bcellphones?\b", r"\bsmartphones?\b", r"\bmobile phones?\b", r"\bphone\b", r"\bphones\b"],
+    "data centers": [r"\bdata[-\s]?cent(?:er|re)s?\b"],
+    "surveillance": [r"\bsurveillance\b", r"\bflock (?:cameras?|safety)\b", r"\blicense[-\s]plate (?:readers?|cameras?|data)\b", r"\bfacial recognition\b"],
+    "journalism": [r"\bCNN\b", r"\bMS ?NOW\b", r"\bMSNBC\b", r"\bPolitico\b", r"\bAssociated Press\b", r"\bpress (?:pool|corps|access|credentials?|freedom|room)\b",
+                   r"\bfree press\b", r"\b(?:news|media) (?:outlets?|organizations?)\b", r"\bjournalists?\b", r"\breporters?\b"],
     "voting":     [r"\bmail in voting\b", r"\bmail-in voting\b", r"\bmail-in ballots\b", r"\bmail voting\b", r"\bmail ballots\b", r"\branked choice voting\b", r"\bvoter\b"],
     # environmental
     "plastic bags":[r"\bplastic bags?\b", r"\bsingle[-\s]?use bags?\b", r"\bsingle-use carryout bags\b"],
     "burn ban":   [r"\bburn ban(s)?\b", r"\bfire bans\b|\bfire ban\b"],
     "lawn watering ban": [r"\blawn watering ban\b"],
     "pollution":  [r"\bmicroplastics\b", r"\bpfas\b", r"\bstraws?\b", r"\bEPA\b", r"\basbestos\b",r"\bpolystyrene\b"],
+    "pesticides": [r"\bpesticides?\b", r"\bparaquat\b", r"\bglyphosate\b", r"\bchlorpyrifos\b", r"\bherbicides?\b", r"\brodenticides?\b"],
+    "mining":     [r"\bmining\b", r"\bboundary waters\b"],
     "renewables": [r"\bwind\b", r"\bsolar\b", r"\bhydropower\b", r"\belectric\b"],
     "fossil fuels":[r"\boil\b", r"\bcoal\b", r"\bnatural gas\b"],
     "food waste": [r"\bfood waste\b"],
     "fireworks":    [r"\bfireworks\b"],
     # entertainment
-    "sports":     [r"\bathlete(s)?\b", r"\bsports\b", r"\bmma\b", r"\bncaa\b", r"\bNBA\b", r"\bNFL\b", r"\bBill Belichick\b"],
+    "sports":     [r"\bathlete(s)?\b", r"\bsports\b", r"\bmma\b", r"\bncaa\b", r"\bNBA\b", r"\bNFL\b", r"\bBill Belichick\b", r"\bworld cup\b", r"\bolympics?\b", r"\bpickleball\b"],
     "drag shows": [r"\bdrag shows?\b", r"\bdrag performances?\b", r"\bdrag ban\b"],
     "gaming":     [r"\broblox\b"],
     "social media":[r"\bsocial media\b"],
-    "gambling":   [r"\bgambling\b", r"\bcasino(s)?\b", r"\bsports betting\b", r"\bdraft kings\b"],
+    "gambling":   [r"\bgambling\b", r"\bcasino(s)?\b", r"\bsports betting\b", r"\bdraft kings\b", r"\bprediction markets?\b", r"\bkalshi\b", r"\bpolymarket\b"],
     # financial
-    "financial": [r"\bSBA\b"],
-    "stock trading": [r"\btrading ban\b", r"\btrading stocks\b"],
+    "financial": [r"\bSBA\b", r"\bcrypto\w*\b", r"\bbitcoin\b", r"\bstablecoins?\b"],
+    "stock trading": [r"\btrading ban\b", r"\btrading stocks\b", r"\bstock[-\s]trading\b"],
+    "trade":      [r"\bexports?\b", r"\bimports?\b", r"\btariffs?\b", r"\brare[-\s]earths?\b"],
     # misc.
     "tear gas":   [r"\btear gas\b"],
     "parking":    [r"\bparking\b"],
@@ -103,15 +112,19 @@ keywords = {
     "labor rights": [r"\bnoncompete\b", r"\bnon compete\b"],
     "costmetics": [r"\bgel nail polish"],
     "lab grown meat": [r"\blab grown meat\b", r"\blab-grown meat\b"],
-    "police":     [r"\bsecret police\b", r"\bice\b", r"\bban federal agents\b", r"\blaw enforcement\b", r"\bfederal agents\b"],
+    "immigration": [r"(?-i:\bICE\b)", r"\bimmigra\w+\b", r"\basylum\b", r"\bundocumented\b", r"\bmigrants?\b", r"\bdeport\w*\b", r"\bsanctuary\b", r"\b287\(g\)"],
+    "police":     [r"\bsecret police\b", r"\bban federal agents\b", r"\blaw enforcement\b", r"\bfederal agents\b"],
     "LGBQ":     [r"\blgbt\b", r"\blgbtq+\b", r"\bcolorful crosswalks\b", r"\brainbow\b", r"\bpride\b", r"\bgay\b", r"\blesbian\b"],
+    "marriage":   [r"\bmarriages?\b"],
     "first amendment":[r"\bfirst amendment\b"],
     "real estate":[r"\bforeign buyers\b"],
     "veterans":   [r"\bveterans\b", r"\bveteran\b"],
-    "religion":   [r"\bprayers\b", r"\bprayer\b", r"\bten commandments\b"],
-    "housing":    [r"\brentals\b", r"\bhomeless\b"],
+    "religion":   [r"\bprayers\b", r"\bprayer\b", r"\bten commandments\b", r"\bsharia\b"],
+    "housing":    [r"\brentals\b", r"\bhomeless\b", r"\bcamping\b", r"\bencampments?\b", r"\binstitutional investors?\b", r"\bsingle[-\s]family homes?\b"],
     "books":      [r"\bbook(s)?\b", r"\blibrary materials?\b", r"\btextbooks?\b", r"\bliterary classics\b"],
     "travel":     [r"\btravel\b", r"\btravel (?:ban|restriction|restrictions)\b", r"\bvisa(s)?\b", r"\bchecked bags\b", r"\bentry bans\b", r"\btsa\b"],
     "guns":       [r"\bguns?\b", r"\bfirearms?\b", r"\bAR-?15s?\b", r"\bassault weapon(s)?\b|\bassault weapon(s)?\b[^\w]",
-                   r"\bbinary trigger ban\b", r"\bnra\b", r"\bMinnesota trigger ban\b", r"\bopen carry\b", r"\bopen-carry\b"]
+                   r"\bbinary trigger ban\b", r"\bnra\b", r"\bMinnesota trigger ban\b", r"\bopen carry\b", r"\bopen-carry\b"],
+    "hunting & fishing": [r"(?<!bounty )(?<!witch )(?<!witch-)\bhunt(?:ing|ers?)\b", r"\bfishing\b", r"\bfisher(?:y|ies)\b", r"\bpoach\w*\b", r"\btrail cameras?\b", r"\bhorseshoe crabs?\b"],
+    "animal welfare": [r"\bdeclaw\w*\b", r"\bfoie gras\b", r"\bgreyhounds?\b", r"\boctopus\b", r"\bpuppy (?:mills?|sellers?)\b", r"\bfur\b", r"\bcircus\b", r"\bpet stores?\b"]
 }
