@@ -85,7 +85,9 @@ keywords = {
     "data centers": [r"\bdata[-\s]?cent(?:er|re)s?\b"],
     "surveillance": [r"\bsurveillance\b", r"\bflock (?:cameras?|safety)\b", r"\blicense[-\s]plate (?:readers?|cameras?|data)\b", r"\bfacial recognition\b"],
     "journalism": [r"\bCNN\b", r"\bMS ?NOW\b", r"\bMSNBC\b", r"\bPolitico\b", r"\bAssociated Press\b", r"\bpress (?:pool|corps|access|credentials?|freedom|room)\b",
-                   r"\bfree press\b", r"\b(?:news|media) (?:outlets?|organizations?)\b", r"\bjournalists?\b", r"\breporters?\b"],
+                   r"\bfree press\b", r"\b(?:news|media) (?:outlets?|organizations?)\b", r"\bjournalists?\b", r"\breporters?\b",
+                   r"(?<!social )(?<!social-)\b(?:media|press|news)(?: access)? bans?\b",
+                   r"\bban(?:s|ned|ning)?['’\"]?\s+(?:on\s+)?(?:(?:other|more|certain|the|white house)\s+){0,2}(?:press|media)\b(?!\s+(?:conferences?|releases?|briefings?|secretary)\b)"],
     "voting":     [r"\bmail in voting\b", r"\bmail-in voting\b", r"\bmail-in ballots\b", r"\bmail voting\b", r"\bmail ballots\b", r"\branked choice voting\b", r"\bvoter[-\s]?(?:ids?|registration|rolls?|fraud|suppression)\b", r"\bsame[-\s]day registration\b", r"\bearly voting\b"],
     # environmental
     "plastic bags":[r"\bplastic bags?\b", r"\bsingle[-\s]?use bags?\b", r"\bsingle-use carryout bags\b"],
