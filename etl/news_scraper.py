@@ -60,7 +60,7 @@ sys.stdout.flush()
 # Import ban_config properly
 sys.path.append(os.path.join(BASE_DIR))
 from config.ban_config import state_patterns, keywords
-from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain
+from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain, state_to_abbrev, is_noise_headline
 # imports for Gmail cutoff
 from datetime import datetime, timedelta, timezone
 # connect to email server and initial pull of messages and emails
@@ -213,7 +213,9 @@ df = pd.DataFrame(data=container)
 df["state"] = df["headlines"].apply(extract_state)
 df["datasource"] = df["article_links"].apply(extract_datasource)
 df["target"] = df["headlines"].apply(choose_target)
-df = df[['alert_date', 'state', 'target', 'headlines', 'datasource', 'article_links']].sort_values(by=['state', 'target']).drop_duplicates(subset=['article_links']).reset_index(drop=True)
+# free-text subject guess for untagged rows only (review list for new categories; not charted)
+df["target_raw"] = df["headlines"].where(df["target"].isna()).apply(lambda h: extract_target_generic(h) if isinstance(h, str) else None)
+df = df[['alert_date', 'state', 'target', 'target_raw', 'headlines', 'datasource', 'article_links']].sort_values(by=['state', 'target']).drop_duplicates(subset=['article_links']).reset_index(drop=True)
 df['alert_date'] = pd.to_datetime(df['alert_date'], utc=True)
 
 
@@ -255,7 +257,9 @@ except Exception as e:
 df_filtered = df[df["state"] != "National / Unknown"]
 # 2 drop headlines that are parsed wrong and begin with an https tag
 df_filtered = df_filtered[~df_filtered["headlines"].str.startswith("<https", na=False)]
-df_filtered["state_abbrev"] = df_filtered["state"].apply(lambda x: us.states.lookup(x).abbr if us.states.lookup(x) else None)
+# 3 drop headlines that aren't ban stories (e.g. "Ray-Ban" products)
+df_filtered = df_filtered[~df_filtered["headlines"].apply(is_noise_headline)]
+df_filtered["state_abbrev"] = df_filtered["state"].apply(state_to_abbrev)
 df_filtered['alert_date'] = df_filtered['alert_date'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 # --- APPEND TO EXISTING DATA ---
@@ -274,6 +278,7 @@ detail_payload = (
             "state",
             "state_abbrev",
             "target",
+            "target_raw",
             "headlines",
             "datasource",
             "article_links",
