@@ -61,6 +61,8 @@ sys.stdout.flush()
 sys.path.append(os.path.join(BASE_DIR))
 from config.ban_config import state_patterns, keywords
 from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain, state_to_abbrev, is_noise_headline
+from config.news_publish import build_latest, build_summary
+from botocore.exceptions import ClientError
 # imports for Gmail cutoff
 from datetime import datetime, timedelta, timezone
 # connect to email server and initial pull of messages and emails
@@ -227,31 +229,73 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
     region_name=os.getenv("AWS_REGION")
 )
-# S3 cleanup for full refreshes only
-if args.full_refresh:
-    print("Full refresh: clearing existing S3 data...")
+BUCKET = "krieger-technologies.com"
+# Full history; the ETL merges into this every run (authoritative copy)
+ARCHIVE_KEY = "news_data/archive/news_detail_archive.json"
+# Site-facing payloads
+LATEST_KEY = "news_data/news_latest.json"
+SUMMARY_KEY = "news_data/news_summary.json"
+META_KEY = "news_data/last_run_timestamp.json"
+# Pre-split files the old site reads. Keep writing them until the new site is
+# live and soaked, then set WRITE_LEGACY_FILES = False and delete them from S3.
+LEGACY_DETAIL_KEY = "news_data/public_news_detail_table.json"
+LEGACY_BAR_KEY = "news_data/public_news_data_bar_chart.json"
+WRITE_LEGACY_FILES = True
+DATA_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800"
+
+
+def load_s3_json(key):
+    # None only when the object doesn't exist; any other failure raises so the
+    # run aborts instead of overwriting history with just the new rows
     try:
-        s3.delete_object(
-            Bucket="krieger-technologies.com",
-            Key="news_data/public_news_detail_table.json"
-        )
-        print("Existing S3 data cleared.")
-    except Exception as e:
-        print(f"Nothing to clear or error: {e}")
+        obj = s3.get_object(Bucket=BUCKET, Key=key)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "NoSuchKey":
+            return None
+        raise
+    return json.loads(obj["Body"].read().decode("utf-8"))
+
+
+def put_s3_json(key, payload, label, indent=None, cache_control=DATA_CACHE_CONTROL):
+    body = json.dumps(payload, indent=indent) if indent else json.dumps(payload, separators=(",", ":"))
+    resp = s3.put_object(
+        Bucket=BUCKET,
+        Key=key,
+        Body=body,
+        ContentType="application/json",
+        CacheControl=cache_control,
+    )
+    print(
+        f"{label} PUT:",
+        resp.get("ResponseMetadata", {}).get("HTTPStatusCode"),
+        "ETag:",
+        resp.get("ETag"),
+        f"({len(body)} bytes)",
+    )
+
 
 # -- MERGE WITH EXISTING S3 DATA --
-print("downloading existing detail JSON from S3 for merge...")
-try:
-    existing_obj = s3.get_object(
-            Bucket="krieger-technologies.com",
-            Key="news_data/public_news_detail_table.json"
-            )
-    existing_records = json.loads(existing_obj["Body"].read().decode("utf-8"))
-    df_existing = pd.DataFrame(existing_records)
-    print(f"Existing records loaded: {len(df_existing)}")
-except Exception as e:
-    print(f"No existing data found or error loading - starting fresh: {e}")
-    df_existing = pd.DataFrame()
+# Full refresh rebuilds from the complete Gmail history, so skip the merge
+# (nothing is deleted; the uploads below overwrite in place).
+if args.full_refresh:
+    print("Full refresh: ignoring existing S3 data")
+    existing_records = []
+else:
+    print("downloading existing detail archive from S3 for merge...")
+    try:
+        existing_records = load_s3_json(ARCHIVE_KEY)
+        if existing_records is None:
+            # first run after the split: seed the archive from the legacy full-detail file
+            print(f"No archive at {ARCHIVE_KEY}; seeding from {LEGACY_DETAIL_KEY}")
+            existing_records = load_s3_json(LEGACY_DETAIL_KEY)
+    except Exception as e:
+        print(f"ABORT: could not load existing data from S3, nothing uploaded: {e}")
+        sys.exit(1)
+    if existing_records is None:
+        print("ABORT: no existing archive or legacy detail file in S3; run with --full-refresh to start fresh")
+        sys.exit(1)
+df_existing = pd.DataFrame(existing_records)
+print(f"Existing records loaded: {len(df_existing)}")
 # Convert DataFrame dates to ISO format
 # 1 drop "National / Unknown"
 df_filtered = df[df["state"] != "National / Unknown"]
@@ -288,66 +332,38 @@ detail_payload = (
     .to_dict(orient="records")
 )
 
-resp_detail = s3.put_object(
-    Bucket="krieger-technologies.com",
-    Key="news_data/public_news_detail_table.json",
-    Body=json.dumps(detail_payload, indent=2),
-    ContentType="application/json",
-    CacheControl="public, max-age=86400, stale-while-revalidate=604800",
-)
-print(
-    "DETAIL PUT:",
-    resp_detail.get("ResponseMetadata", {}).get("HTTPStatusCode"),
-    "ETag:",
-    resp_detail.get("ETag"),
-)
-# Build aggregated dataset for histogram
-summary_df = (
-    df_filtered.groupby("target")
-    .agg(
-        count_of_news_articles=("target", "count"),
-        states=("state", lambda x: ", ".join(sorted(set(x))))
+# merge keeps existing rows, so the archive can only grow
+if len(detail_payload) < len(existing_records):
+    print(f"ABORT: merged {len(detail_payload)} rows < {len(existing_records)} existing; nothing uploaded")
+    sys.exit(1)
+
+# archive first: it's the copy the next run merges into
+put_s3_json(ARCHIVE_KEY, detail_payload, "ARCHIVE")
+put_s3_json(LATEST_KEY, build_latest(detail_payload), "LATEST")
+put_s3_json(SUMMARY_KEY, build_summary(detail_payload), "SUMMARY")
+
+if WRITE_LEGACY_FILES:
+    put_s3_json(LEGACY_DETAIL_KEY, detail_payload, "LEGACY DETAIL", indent=2)
+    # Build aggregated dataset for histogram
+    summary_df = (
+        df_filtered.groupby("target")
+        .agg(
+            count_of_news_articles=("target", "count"),
+            states=("state", lambda x: ", ".join(sorted(set(x))))
+        )
+        .reset_index()
+        .sort_values("count_of_news_articles", ascending=False)
+        .head(10)
     )
-    .reset_index()
-    .sort_values("count_of_news_articles", ascending=False)
-    .head(10)
-)
+    put_s3_json(LEGACY_BAR_KEY, summary_df.to_dict(orient="records"), "LEGACY BAR", indent=2)
 
-json_payload = summary_df.to_dict(orient="records")
-
-resp_bar = s3.put_object(
-    Bucket="krieger-technologies.com",
-    Key="news_data/public_news_data_bar_chart.json",
-    Body=json.dumps(json_payload, indent=2),
-    ContentType="application/json",
-    CacheControl="public, max-age=86400, stale-while-revalidate=604800",
-)
-print(
-    "BAR PUT:",
-    resp_bar.get("ResponseMetadata", {}).get("HTTPStatusCode"),
-    "ETag:",
-    resp_bar.get("ETag"),
-)
-# export last time run timestamp
+# export last time run timestamp last: a new timestamp is what makes browsers fetch the new files
 metadata = {
     "last_updated_utc": datetime.now(timezone.utc).isoformat(),
     "record_count": len(df),
     "source": "email_scraper_v4"
 }
-
-resp_meta = s3.put_object(
-    Bucket="krieger-technologies.com",
-    Key="news_data/last_run_timestamp.json",
-    Body=json.dumps(metadata, indent=2),
-    ContentType="application/json",
-    CacheControl="no-cache, no-store, must-revalidate",
-)
-print(
-    "META PUT:",
-    resp_meta.get("ResponseMetadata", {}).get("HTTPStatusCode"),
-    "ETag:",
-    resp_meta.get("ETag"),
-)
+put_s3_json(META_KEY, metadata, "META", indent=2, cache_control="no-cache, no-store, must-revalidate")
 print("ETL reached end of script")
 sys.exit(0)
 print("public_news_data.json uploaded")
