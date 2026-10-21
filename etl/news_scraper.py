@@ -10,12 +10,10 @@ if sys.version_info < (3, 11):
         f"  /home/ec2-user/home/ETL-project/venv/bin/python etl/news_scraper.py"
     )
 
-from dotenv import load_dotenv
 import boto3
 import json
 import socket # package for email retrieval timeout
 socket.setdefaulttimeout(60)
-import signal # package for python operation timeouts
 
 # data manipulation
 import pandas as pd
@@ -24,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--full-refresh', action='store_true', help='Pull full Gmail history instead of last 3 days')
+parser.add_argument('--full-refresh', action='store_true', help='Pull full Gmail history instead of last 3 days (still merged into the archive; never shrinks it)')
 args = parser.parse_args()
 
 # email packages
@@ -43,14 +41,8 @@ from urllib.parse import unquote, urlparse, parse_qs
 from bs4 import BeautifulSoup
 import requests
 
-# graphs
-# import plotly.express as px
 import us
-
-# organize later
-import re
 import base64
-from urllib.parse import unquote, urlparse, parse_qs
 
 # -----------------------
 # Project setup
@@ -61,8 +53,8 @@ sys.stdout.flush()
 sys.path.append(os.path.join(BASE_DIR))
 from config.ban_config import state_patterns, keywords
 from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain, state_to_abbrev, is_noise_headline
-# imports for Gmail cutoff
-from datetime import datetime, timedelta, timezone
+from config.news_publish import build_latest, build_summary
+from botocore.exceptions import ClientError
 # connect to email server and initial pull of messages and emails
 
 def fetch_gmail_messages(full_refresh=False):
@@ -221,37 +213,65 @@ df['alert_date'] = pd.to_datetime(df['alert_date'], utc=True)
 
 # --- S3 JSON export ---
 print("Uploading JSON to S3...")
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.getenv("AWS_REGION")
-)
-# S3 cleanup for full refreshes only
-if args.full_refresh:
-    print("Full refresh: clearing existing S3 data...")
+# credentials come from the EC2 instance role (EC2-ETL-S3-Write)
+s3 = boto3.client("s3")
+BUCKET = "krieger-technologies.com"
+# Full history; the ETL merges into this every run (authoritative copy)
+ARCHIVE_KEY = "news_data/archive/news_detail_archive.json"
+# Site-facing payloads
+LATEST_KEY = "news_data/news_latest.json"
+SUMMARY_KEY = "news_data/news_summary.json"
+META_KEY = "news_data/last_run_timestamp.json"
+DATA_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800"
+
+
+def load_s3_json(key):
+    # None only when the object doesn't exist; any other failure raises so the
+    # run aborts instead of overwriting history with just the new rows
     try:
-        s3.delete_object(
-            Bucket="krieger-technologies.com",
-            Key="news_data/public_news_detail_table.json"
-        )
-        print("Existing S3 data cleared.")
-    except Exception as e:
-        print(f"Nothing to clear or error: {e}")
+        obj = s3.get_object(Bucket=BUCKET, Key=key)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "NoSuchKey":
+            return None
+        raise
+    return json.loads(obj["Body"].read().decode("utf-8"))
+
+
+def put_s3_json(key, payload, label, indent=None, cache_control=DATA_CACHE_CONTROL):
+    body = json.dumps(payload, indent=indent) if indent else json.dumps(payload, separators=(",", ":"))
+    resp = s3.put_object(
+        Bucket=BUCKET,
+        Key=key,
+        Body=body,
+        ContentType="application/json",
+        CacheControl=cache_control,
+    )
+    print(
+        f"{label} PUT:",
+        resp.get("ResponseMetadata", {}).get("HTTPStatusCode"),
+        "ETag:",
+        resp.get("ETag"),
+        f"({len(body)} bytes)",
+    )
+
 
 # -- MERGE WITH EXISTING S3 DATA --
-print("downloading existing detail JSON from S3 for merge...")
+# Every run merges into the archive, including --full-refresh: Gmail no longer
+# holds the full history, so replacing the archive with it would lose rows.
+print("downloading existing detail archive from S3 for merge...")
 try:
-    existing_obj = s3.get_object(
-            Bucket="krieger-technologies.com",
-            Key="news_data/public_news_detail_table.json"
-            )
-    existing_records = json.loads(existing_obj["Body"].read().decode("utf-8"))
-    df_existing = pd.DataFrame(existing_records)
-    print(f"Existing records loaded: {len(df_existing)}")
+    existing_records = load_s3_json(ARCHIVE_KEY)
 except Exception as e:
-    print(f"No existing data found or error loading - starting fresh: {e}")
-    df_existing = pd.DataFrame()
+    print(f"ABORT: could not load existing data from S3, nothing uploaded: {e}")
+    sys.exit(1)
+if existing_records is None:
+    if not args.full_refresh:
+        print(f"ABORT: no archive at {ARCHIVE_KEY}; restore it from an S3 object version, or run with --full-refresh to start fresh")
+        sys.exit(1)
+    print("Full refresh with no archive: starting fresh from Gmail history")
+    existing_records = []
+df_existing = pd.DataFrame(existing_records)
+print(f"Existing records loaded: {len(df_existing)}")
 # Convert DataFrame dates to ISO format
 # 1 drop "National / Unknown"
 df_filtered = df[df["state"] != "National / Unknown"]
@@ -288,66 +308,22 @@ detail_payload = (
     .to_dict(orient="records")
 )
 
-resp_detail = s3.put_object(
-    Bucket="krieger-technologies.com",
-    Key="news_data/public_news_detail_table.json",
-    Body=json.dumps(detail_payload, indent=2),
-    ContentType="application/json",
-    CacheControl="public, max-age=86400, stale-while-revalidate=604800",
-)
-print(
-    "DETAIL PUT:",
-    resp_detail.get("ResponseMetadata", {}).get("HTTPStatusCode"),
-    "ETag:",
-    resp_detail.get("ETag"),
-)
-# Build aggregated dataset for histogram
-summary_df = (
-    df_filtered.groupby("target")
-    .agg(
-        count_of_news_articles=("target", "count"),
-        states=("state", lambda x: ", ".join(sorted(set(x))))
-    )
-    .reset_index()
-    .sort_values("count_of_news_articles", ascending=False)
-    .head(10)
-)
+# merge keeps existing rows, so the archive can only grow
+if len(detail_payload) < len(existing_records):
+    print(f"ABORT: merged {len(detail_payload)} rows < {len(existing_records)} existing; nothing uploaded")
+    sys.exit(1)
 
-json_payload = summary_df.to_dict(orient="records")
+# archive first: it's the copy the next run merges into
+put_s3_json(ARCHIVE_KEY, detail_payload, "ARCHIVE")
+put_s3_json(LATEST_KEY, build_latest(detail_payload), "LATEST")
+put_s3_json(SUMMARY_KEY, build_summary(detail_payload), "SUMMARY")
 
-resp_bar = s3.put_object(
-    Bucket="krieger-technologies.com",
-    Key="news_data/public_news_data_bar_chart.json",
-    Body=json.dumps(json_payload, indent=2),
-    ContentType="application/json",
-    CacheControl="public, max-age=86400, stale-while-revalidate=604800",
-)
-print(
-    "BAR PUT:",
-    resp_bar.get("ResponseMetadata", {}).get("HTTPStatusCode"),
-    "ETag:",
-    resp_bar.get("ETag"),
-)
-# export last time run timestamp
+# export last time run timestamp last: a new timestamp is what makes browsers fetch the new files
 metadata = {
     "last_updated_utc": datetime.now(timezone.utc).isoformat(),
     "record_count": len(df),
     "source": "email_scraper_v4"
 }
-
-resp_meta = s3.put_object(
-    Bucket="krieger-technologies.com",
-    Key="news_data/last_run_timestamp.json",
-    Body=json.dumps(metadata, indent=2),
-    ContentType="application/json",
-    CacheControl="no-cache, no-store, must-revalidate",
-)
-print(
-    "META PUT:",
-    resp_meta.get("ResponseMetadata", {}).get("HTTPStatusCode"),
-    "ETag:",
-    resp_meta.get("ETag"),
-)
+put_s3_json(META_KEY, metadata, "META", indent=2, cache_control="no-cache, no-store, must-revalidate")
 print("ETL reached end of script")
 sys.exit(0)
-print("public_news_data.json uploaded")

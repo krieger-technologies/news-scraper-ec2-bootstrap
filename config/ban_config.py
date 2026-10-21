@@ -72,7 +72,7 @@ keywords = {
     "gender-affirming care": [r"\bgender[-\s]?affirming care\b", r"\bpuberty blockers?\b", r"\bhormone therapy\b", r"\bgender (?:care|transition)\b", r"\btransition care\b"],
     "LGBTQ+":     [r"\blgbtq?i?a?\+?(?!\w)", r"\btrans\b", r"\btransgender\b", r"\bnon-?binary\b", r"\bqueer\b", r"\bbathroom ban\b", r"\bpronouns\b",
                    r"\bconversion therapy\b", r"\bcolorful crosswalks\b", r"\brainbow\b", r"\bpride\b", r"\bgay\b", r"\blesbian\b"],
-    "abortion":   [r"\babortion\b", r"\bmifepristone\b", r"\bplan\s?b\b"],
+    "reproductive health": [r"\babortions?\b", r"\bmifepristone\b", r"\bplan\s?b\b"],
     "health-care":[r"(?<!conversion[-\s])(?<!hormone[-\s])\btherapy\b", r"\bhealth-care\b", r"\bhealth care\b", r"\bmental health\b"],
     "vaccines":   [r"\bvaccine\b", r"\bvaccines\b"],
     "masks":      [r"\bmask\b", r"\bmasks\b", r"\bmasked\b"],
