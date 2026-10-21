@@ -10,12 +10,10 @@ if sys.version_info < (3, 11):
         f"  /home/ec2-user/home/ETL-project/venv/bin/python etl/news_scraper.py"
     )
 
-from dotenv import load_dotenv
 import boto3
 import json
 import socket # package for email retrieval timeout
 socket.setdefaulttimeout(60)
-import signal # package for python operation timeouts
 
 # data manipulation
 import pandas as pd
@@ -43,14 +41,8 @@ from urllib.parse import unquote, urlparse, parse_qs
 from bs4 import BeautifulSoup
 import requests
 
-# graphs
-# import plotly.express as px
 import us
-
-# organize later
-import re
 import base64
-from urllib.parse import unquote, urlparse, parse_qs
 
 # -----------------------
 # Project setup
@@ -63,8 +55,6 @@ from config.ban_config import state_patterns, keywords
 from config.news_scraper_functions import extract_state, extract_datasource, clean_headline, COMPILED_PATTERNS, extract_target_generic, find_keyword_targets, choose_target, safe_get_plain, state_to_abbrev, is_noise_headline
 from config.news_publish import build_latest, build_summary
 from botocore.exceptions import ClientError
-# imports for Gmail cutoff
-from datetime import datetime, timedelta, timezone
 # connect to email server and initial pull of messages and emails
 
 def fetch_gmail_messages(full_refresh=False):
@@ -223,12 +213,8 @@ df['alert_date'] = pd.to_datetime(df['alert_date'], utc=True)
 
 # --- S3 JSON export ---
 print("Uploading JSON to S3...")
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.getenv("AWS_REGION")
-)
+# credentials come from the EC2 instance role (EC2-ETL-S3-Write)
+s3 = boto3.client("s3")
 BUCKET = "krieger-technologies.com"
 # Full history; the ETL merges into this every run (authoritative copy)
 ARCHIVE_KEY = "news_data/archive/news_detail_archive.json"
@@ -341,4 +327,3 @@ metadata = {
 put_s3_json(META_KEY, metadata, "META", indent=2, cache_control="no-cache, no-store, must-revalidate")
 print("ETL reached end of script")
 sys.exit(0)
-print("public_news_data.json uploaded")
