@@ -236,11 +236,6 @@ ARCHIVE_KEY = "news_data/archive/news_detail_archive.json"
 LATEST_KEY = "news_data/news_latest.json"
 SUMMARY_KEY = "news_data/news_summary.json"
 META_KEY = "news_data/last_run_timestamp.json"
-# Pre-split files the old site reads. Keep writing them until the new site is
-# live and soaked, then set WRITE_LEGACY_FILES = False and delete them from S3.
-LEGACY_DETAIL_KEY = "news_data/public_news_detail_table.json"
-LEGACY_BAR_KEY = "news_data/public_news_data_bar_chart.json"
-WRITE_LEGACY_FILES = True
 DATA_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800"
 
 
@@ -284,15 +279,11 @@ else:
     print("downloading existing detail archive from S3 for merge...")
     try:
         existing_records = load_s3_json(ARCHIVE_KEY)
-        if existing_records is None:
-            # first run after the split: seed the archive from the legacy full-detail file
-            print(f"No archive at {ARCHIVE_KEY}; seeding from {LEGACY_DETAIL_KEY}")
-            existing_records = load_s3_json(LEGACY_DETAIL_KEY)
     except Exception as e:
         print(f"ABORT: could not load existing data from S3, nothing uploaded: {e}")
         sys.exit(1)
     if existing_records is None:
-        print("ABORT: no existing archive or legacy detail file in S3; run with --full-refresh to start fresh")
+        print(f"ABORT: no archive at {ARCHIVE_KEY}; restore it from an S3 object version, or run with --full-refresh to start fresh")
         sys.exit(1)
 df_existing = pd.DataFrame(existing_records)
 print(f"Existing records loaded: {len(df_existing)}")
@@ -341,21 +332,6 @@ if len(detail_payload) < len(existing_records):
 put_s3_json(ARCHIVE_KEY, detail_payload, "ARCHIVE")
 put_s3_json(LATEST_KEY, build_latest(detail_payload), "LATEST")
 put_s3_json(SUMMARY_KEY, build_summary(detail_payload), "SUMMARY")
-
-if WRITE_LEGACY_FILES:
-    put_s3_json(LEGACY_DETAIL_KEY, detail_payload, "LEGACY DETAIL", indent=2)
-    # Build aggregated dataset for histogram
-    summary_df = (
-        df_filtered.groupby("target")
-        .agg(
-            count_of_news_articles=("target", "count"),
-            states=("state", lambda x: ", ".join(sorted(set(x))))
-        )
-        .reset_index()
-        .sort_values("count_of_news_articles", ascending=False)
-        .head(10)
-    )
-    put_s3_json(LEGACY_BAR_KEY, summary_df.to_dict(orient="records"), "LEGACY BAR", indent=2)
 
 # export last time run timestamp last: a new timestamp is what makes browsers fetch the new files
 metadata = {
