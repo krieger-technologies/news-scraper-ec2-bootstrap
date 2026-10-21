@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--full-refresh', action='store_true', help='Pull full Gmail history instead of last 3 days')
+parser.add_argument('--full-refresh', action='store_true', help='Pull full Gmail history instead of last 3 days (still merged into the archive; never shrinks it)')
 args = parser.parse_args()
 
 # email packages
@@ -270,21 +270,20 @@ def put_s3_json(key, payload, label, indent=None, cache_control=DATA_CACHE_CONTR
 
 
 # -- MERGE WITH EXISTING S3 DATA --
-# Full refresh rebuilds from the complete Gmail history, so skip the merge
-# (nothing is deleted; the uploads below overwrite in place).
-if args.full_refresh:
-    print("Full refresh: ignoring existing S3 data")
-    existing_records = []
-else:
-    print("downloading existing detail archive from S3 for merge...")
-    try:
-        existing_records = load_s3_json(ARCHIVE_KEY)
-    except Exception as e:
-        print(f"ABORT: could not load existing data from S3, nothing uploaded: {e}")
-        sys.exit(1)
-    if existing_records is None:
+# Every run merges into the archive, including --full-refresh: Gmail no longer
+# holds the full history, so replacing the archive with it would lose rows.
+print("downloading existing detail archive from S3 for merge...")
+try:
+    existing_records = load_s3_json(ARCHIVE_KEY)
+except Exception as e:
+    print(f"ABORT: could not load existing data from S3, nothing uploaded: {e}")
+    sys.exit(1)
+if existing_records is None:
+    if not args.full_refresh:
         print(f"ABORT: no archive at {ARCHIVE_KEY}; restore it from an S3 object version, or run with --full-refresh to start fresh")
         sys.exit(1)
+    print("Full refresh with no archive: starting fresh from Gmail history")
+    existing_records = []
 df_existing = pd.DataFrame(existing_records)
 print(f"Existing records loaded: {len(df_existing)}")
 # Convert DataFrame dates to ISO format
